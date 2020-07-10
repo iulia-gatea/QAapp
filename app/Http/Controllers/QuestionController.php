@@ -144,14 +144,22 @@ class QuestionController extends Controller
         $question = Question::findOrFail($id);
 
         if($question){
-            $question->answers()->delete();
-            $question->delete();
+            if($question->answers())
+            {
+                $question->delete();
 
+                $response = [
+                    'message' => 'Question with id: '.$id.' is deleted'
+                ];
+
+                return response()->json($response, 200);
+            }
+            
             $response = [
-                'message' => 'Question with id: '.$id.' is deleted'
+                'message' => 'Question with id: '.$id.' cannot be deleted. It has answers associated with it.'
             ];
 
-            return response()->json($response, 200);
+            return response()->json($response, 401);
         }
         $response = [
             'message' => 'There is no question with id: '.$id
@@ -190,7 +198,7 @@ class QuestionController extends Controller
         return [
             'href' => '/api/v1/question/answer',
             'method' => 'POST',
-            'params' => '[question_id, description]'
+            'params' => 'question_id, description'
         ];
     }
 }
