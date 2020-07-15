@@ -5,10 +5,16 @@ namespace App\Http\Controllers;
 use Illuminate\Http\Request;
 use App\Question;
 use App\Answer;
+use JWTAuth;
 
 class AnswerController extends Controller
 {
-
+    public function __construct()
+    {
+        $this->middleware('jwt.auth', ['only' => [
+            'update', 'store', 'destroy'
+        ]]);
+    }
     /**
      * Store a newly created resource in storage.
      *
@@ -18,27 +24,43 @@ class AnswerController extends Controller
     public function store(Request $request)
     {
         $this->validate($request, [
-            'description' => 'required'
+            'description' => 'required',
+            'question_id' => 'required'
         ]);
+
+        if (! $user = JWTAuth::parseToken()->authenticate()) {
+            return response()->json(['msg' => 'User not found'], 404);
+        }
 
         $question_id = $request->input('question_id');
         $description = $request->input('description');
 
         $question = Question::findOrFail($question_id);
-        $answer = new Answer(['description' => $description]);
-        $question->answers()->save($answer);
+        $answer = new Answer([
+            'description' => $description
+        ]);
+        $answer->user_id = $user->id;
 
-        $question->view_question = [
-            'href' => '/api/v1/question/'.$question->id,
-            'method' => 'GET'
-        ];
+        if ($question->answers()->save($answer))
+        {
+            $question->view_question = [
+                'href' => '/api/v1/question/'.$question->id,
+                'method' => 'GET'
+            ];
+
+            $response = [
+                'message' => 'Question answered',
+                'question' => $question
+            ];
+
+            return response()->json($response, 201);
+        }
 
         $response = [
-            'message' => 'Question answered',
-            'question' => $question
+            'message' => 'Question cannot be answered'
         ];
 
-        return response()->json($response, 201);
+        return response()->json($response, 404);
     }
 
     /**
@@ -50,11 +72,19 @@ class AnswerController extends Controller
      */
     public function update(Request $request, $id)
     {
+        if (! $user = JWTAuth::parseToken()->authenticate()) {
+            return response()->json(['msg' => 'User not found'], 404);
+        }
+
         $question_id = $request->input('question_id');
         $answer = $request->input('answer');
 
         $answer = Answer::findOrFail($id);
         $answer->description = $request->input('description');
+
+        if ($answer->user_id != $user->id){
+            return response()->json(['msg' => 'You can only update your own answers, update not successful'], 401);
+        }
 
         if($answer->update())
         {
@@ -86,7 +116,15 @@ class AnswerController extends Controller
      */
     public function destroy($id)
     {
+        if (! $user = JWTAuth::parseToken()->authenticate()) {
+            return response()->json(['msg' => 'User not found'], 404);
+        }
+
         $answer = Answer::findOrFail($id);
+
+        if ($answer->user_id != $user->id){
+            return response()->json(['msg' => 'You can only delete your own answers, delete not successful'], 401);
+        }
 
         if($answer){
             $answer->delete();
