@@ -4,9 +4,17 @@ namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
 use App\Question;
+use App\User;
+use JWTAuth;
 
 class QuestionController extends Controller
 {
+    public function __construct()
+    {
+        $this->middleware('jwt.auth', ['only' => [
+            'update', 'store', 'destroy'
+        ]]);
+    }
     /**
      * Display a listing of the resource.
      *
@@ -17,8 +25,10 @@ class QuestionController extends Controller
         $questions = Question::leftJoin('answers', 'questions.id', '=', 'answers.question_id')->with('answers')->withCount('answers')->orderBy('answers.created_at', 'desc')->orderBy('answers_count', 'desc')->get();
 
         foreach ($questions as $question) {
+            $last_answer = $question->answers()->orderBy('answers.created_at', 'desc')->first();
             $question->view_question = $this->view($question);
             $question->add_answers = $this->add_answers($question);
+            $question->last_answer = 'Last answer by ' . User::find($last_answer->user_id)->name . ' on ' . $last_answer->created_at;
         }
 
         $response = [
@@ -42,6 +52,10 @@ class QuestionController extends Controller
             'description' => 'required'
         ]);
 
+        if (! $user = JWTAuth::parseToken()->authenticate()) {
+            return response()->json(['msg' => 'User not found'], 404);
+        }
+
         $title = $request->input('title');
         $description = $request->input('description');
 
@@ -49,8 +63,8 @@ class QuestionController extends Controller
             'title' => $title,
             'description' => $description
         ]);
-        
-        if($question->save())
+
+        if($user->questions()->save($question))
         {
             $question->view_question = $this->view($question);
             
@@ -107,10 +121,18 @@ class QuestionController extends Controller
      */
     public function update(Request $request, $id)
     {
+        if (! $user = JWTAuth::parseToken()->authenticate()) {
+            return response()->json(['msg' => 'User not found'], 404);
+        }
+
+        $question = Question::findOrFail($id);
+
+        if ($question->user_id != $user->id) {
+            return response()->json(['msg' => 'You can only update your own questions, update not successful'], 401);
+        };
         $title = $request->input('title');
         $description = $request->input('description');
 
-        $question = Question::findOrFail($id);
         $question->title = $title;
         $question->description = $description;
         
@@ -141,9 +163,21 @@ class QuestionController extends Controller
      */
     public function destroy($id)
     {
+        if (! $user = JWTAuth::parseToken()->authenticate()) {
+            return response()->json(['msg' => 'User not found'], 404);
+        }
+
         $question = Question::findOrFail($id);
 
+        if ($question->user_id != $user->id)  {
+            return response()->json(['msg' => 'You can only update your own questions, update not successful'], 401);
+        };
+
         if($question){
+            if ($question->user_id != $user->id){
+                return response()->json(['msg' => 'You can only delete your own questions, delete not successful'], 401);
+            }
+
             if($question->answers())
             {
                 $question->delete();
@@ -170,15 +204,24 @@ class QuestionController extends Controller
 
     public function delete_unanswered()
     {
+        if (! $user = JWTAuth::parseToken()->authenticate()) {
+            return response()->json(['msg' => 'User not found'], 404);
+        }
+
         $questions = Question::has('answers', '=', 0)->get();
+        $deleted_questions = [];
 
         foreach ($questions as $question) {
-            $question->delete();
+            if ($question->user_id != $user->id)  {
+                if($question->delete()){
+                    $deleted_questions << $question;
+                }
+            };
         }
 
         $response = [
-            'message' => 'Unanswered questions deleted!',
-            'questions_deleted' => $questions
+            'message' => 'Your unanswered questions were deleted!',
+            'questions_deleted' => $deleted_questions
         ];
 
         return response()->json($response, 200);

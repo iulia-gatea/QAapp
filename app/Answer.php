@@ -12,4 +12,9 @@ class Answer extends Model
     {
     	return $this->belongsTo('App\Question');
     }
+
+    public function users()
+    {
+    	return $this->belongsTo('App\Answer');
+    }
 }

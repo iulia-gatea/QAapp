@@ -30,4 +30,16 @@ Route::group(['prefix' => 'v1'], function() {
 	Route::resource('question/answer', 'AnswerController', [
 		'only' => ['store', 'update', 'destroy']
 	]);
+
+	Route::post('user', [
+        'uses' => 'AuthController@store'
+    ]);
+
+    Route::post('user/signin', [
+        'uses' => 'AuthController@signin'
+    ]);
+
+    Route::post('user/reset_password', [
+        'uses' => 'AuthController@reset_password'
+    ]);
 });
